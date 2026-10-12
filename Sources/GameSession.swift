@@ -6,9 +6,9 @@ final class GameSession {
     weak var webView: WKWebView?
     var phase: Phase = .booting
     var progress: Double = 0
-    var canGoBack = false
     var onExternal: (URL) -> Void = { _ in }
-    var patchSource: String?
+    var onAppSettings: () -> Void = {}
+    var displayScript: String?
 
     enum Phase: Equatable {
         case booting
@@ -17,34 +17,21 @@ final class GameSession {
         case failed(String)
     }
 
-    func goBack() {
-        guard let webView, webView.canGoBack else { return }
-        Haptics.tap()
-        webView.goBack()
-    }
-
     func noteStart() {
         if phase != .playing {
             phase = .loading
         }
-        syncNavigation()
     }
 
     func noteFinish() {
         phase = .playing
         progress = 1
-        syncNavigation()
-        Task { await reinjectPatchIfNeeded() }
+        Task { await reinjectTranslationIfNeeded() }
     }
 
     func noteFailure(_ message: String) {
         phase = .failed(message)
         Haptics.warn()
-        syncNavigation()
-    }
-
-    func syncNavigation() {
-        canGoBack = webView?.canGoBack ?? false
     }
 
     func openExternal(_ url: URL) {
@@ -53,10 +40,10 @@ final class GameSession {
         }
     }
 
-    private func reinjectPatchIfNeeded() async {
-        guard let webView, let patchSource else { return }
-        let current = try? await webView.evaluateJavaScript(ShellScripts.patchMarker)
+    private func reinjectTranslationIfNeeded() async {
+        guard let webView, let displayScript else { return }
+        let current = try? await webView.evaluateJavaScript(DisplayTranslator.markerExpression)
         if (current as? Bool) == true { return }
-        _ = try? await webView.evaluateJavaScript(patchSource)
+        _ = try? await webView.evaluateJavaScript(displayScript)
     }
 }

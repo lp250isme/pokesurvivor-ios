@@ -19,16 +19,15 @@ This repository is an unofficial, non-commercial iOS client. It does not contain
 
 ## App icon
 
-The home-screen icon is the game's published icon (`https://pokesurvivor.com/assets/icons/icon-512.png`), scaled with nearest-neighbor. It is not included in the MIT code grant. See `Resources/ICON-SOURCE.txt`.
+The home-screen icon keeps the Poké Ball from the game's published icon (`https://pokesurvivor.com/assets/icons/icon-512.png`). The gold frame is removed so the iOS mask does not crop it. Scaled with nearest-neighbor. It is not included in the MIT code grant. See `Resources/ICON-SOURCE.txt`.
 
-## Traditional Chinese patch
+## Traditional Chinese text
 
 - Author: [Kai5106](https://greasyfork.org/zh-TW/users/1652257-kai5106)
-- Script: [PokéSurvivor 繁體中文補丁](https://greasyfork.org/zh-TW/scripts/599869) version 1.0.0
-- Install URL: `https://update.greasyfork.org/scripts/599869/Pok%C3%A9Survivor%20%E7%B9%81%E9%AB%94%E4%B8%AD%E6%96%87%E8%A3%9C%E4%B8%81.user.js`
+- Source text: [PokéSurvivor 繁體中文補丁](https://greasyfork.org/zh-TW/scripts/599869) version 1.0.0
 - Guide: [usegametool](https://usegametool.blogspot.com/2026/10/pokesurvivor.html)
-- Greasy Fork lists the license as unspecified. This repo therefore does not contain the script. The app downloads it onto the device when the setting is on, checks the userscript header, and refuses copies that add `@require`, a grant other than `none`, or network/storage calls that were not in the reviewed 1.0.0 script.
-- Name data in the patch follows PokeAPI Traditional Chinese. UI lines are Kai5106's translation.
+- Greasy Fork lists the license as unspecified. The display strings the user supplied from that 1.0.0 text are bundled in `Resources/zh-Hant.json` and used only to show Traditional Chinese on the live site. The catalog does not fetch code, read credentials, write storage, or change network requests.
+- Pokémon names follow PokeAPI Traditional Chinese (language 4). Interface lines are Kai5106's translation.
 
 ## Trademarks
 

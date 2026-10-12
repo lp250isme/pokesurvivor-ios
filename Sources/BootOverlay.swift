@@ -1,16 +1,15 @@
 import SwiftUI
+import UIKit
 
 struct BootOverlay: View {
     var session: GameSession
-    var patchEnabled: Bool
-    var patchMissing: Bool
-    var patchStatus: PatchClient.Status
     var onRetry: () -> Void
+    var onSettings: () -> Void
 
     var body: some View {
         switch session.phase {
         case .playing:
-            patchBanner
+            EmptyView()
         case .failed(let message):
             failure(message)
         case .booting, .loading:
@@ -26,7 +25,7 @@ struct BootOverlay: View {
                 Text("PokéSurvivor")
                     .font(.system(.largeTitle, design: .rounded).weight(.bold))
                     .foregroundStyle(.white)
-                Text(splashTitle)
+                Text("遊戲啟動中")
                     .font(.headline)
                     .foregroundStyle(Theme.spark)
                     .multilineTextAlignment(.center)
@@ -44,32 +43,6 @@ struct BootOverlay: View {
         .accessibilityElement(children: .combine)
     }
 
-    private var splashTitle: String {
-        if case .booting = session.phase, patchEnabled {
-            return "正在取得繁體中文補丁"
-        }
-        return "正在打開原站"
-    }
-
-    @ViewBuilder
-    private var patchBanner: some View {
-        if patchEnabled, patchMissing, case .failed(let message) = patchStatus {
-            VStack {
-                Text(message)
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .background(Theme.ember.opacity(0.92), in: Capsule())
-                    .padding(.top, 10)
-                Spacer()
-            }
-            .padding(.horizontal, 24)
-            .allowsHitTesting(false)
-        }
-    }
-
     private func failure(_ message: String) -> some View {
         ZStack {
             DungeonBackdrop()
@@ -83,18 +56,25 @@ struct BootOverlay: View {
                     .buttonStyle(.borderedProminent)
                     .tint(Theme.spark)
                     .foregroundStyle(Theme.abyss)
+                Button("App 設定", action: onSettings)
+                    .buttonStyle(.bordered)
+                    .tint(Theme.spark)
             }
             .padding(28)
         }
     }
 
     private var gameMark: some View {
-        Image("GameIcon")
-            .resizable()
-            .interpolation(.none)
-            .frame(width: 88, height: 88)
-            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .shadow(color: .black.opacity(0.4), radius: 14, y: 8)
-            .accessibilityHidden(true)
+        Group {
+            if let image = UIImage(named: "GameIcon") {
+                Image(uiImage: image)
+                    .renderingMode(.original)
+                    .resizable()
+                    .interpolation(.none)
+                    .frame(width: 88, height: 88)
+            }
+        }
+        .shadow(color: .black.opacity(0.4), radius: 14, y: 8)
+        .accessibilityHidden(true)
     }
 }

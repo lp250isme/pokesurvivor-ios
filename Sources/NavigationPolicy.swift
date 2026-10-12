@@ -25,15 +25,25 @@ enum NavigationPolicy {
     static func isSignIn(_ url: URL) -> Bool {
         guard url.scheme?.lowercased() == "https", let host = url.host?.lowercased() else { return false }
         if host == "accounts.google.com" { return true }
+        return isAuthHandler(url)
+    }
+
+    /// The page that exchanges the Google code. Credential messages are accepted only from here.
+    static func isAuthHandler(_ url: URL) -> Bool {
+        guard url.scheme?.lowercased() == "https", let host = url.host?.lowercased() else { return false }
         guard url.path == "/__/auth/handler" || url.path.hasPrefix("/__/auth/handler/") else { return false }
         return host == "firebaseapp.com" || host.hasSuffix(".firebaseapp.com")
             || host == "pokesurvivor.com" || host.hasSuffix(".pokesurvivor.com")
     }
 
-    /// Main-frame loads inside the sign-in window. Subframes are allowed separately.
+    /// Main-frame loads inside the sign-in window. The game origin is refused:
+    /// when `window.opener` is gone, the handler navigates here and the sheet shows the start screen.
     static func allowsSignInNavigation(_ url: URL) -> Bool {
-        if allows(url) { return true }
         guard url.scheme?.lowercased() == "https", let host = url.host?.lowercased() else { return false }
+        if host == "pokesurvivor.com" || host.hasSuffix(".pokesurvivor.com") {
+            return isAuthHandler(url)
+        }
+        if allows(url) { return true }
         return host == "youtube.com" || host.hasSuffix(".youtube.com")
     }
 }

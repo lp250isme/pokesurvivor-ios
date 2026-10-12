@@ -6,8 +6,9 @@ struct PokeSurvivorApp: App {
     @UIApplicationDelegateAdaptor(OrientationDelegate.self) private var orientationDelegate
 
     init() {
+        DisplayLanguage.migrateStoredValue()
         UserDefaults.standard.register(defaults: [
-            "patch.enabled": true,
+            "displayLanguage": DisplayLanguage.traditionalChinese.rawValue,
             "keepAwake": true,
             "haptics.enabled": true,
         ])

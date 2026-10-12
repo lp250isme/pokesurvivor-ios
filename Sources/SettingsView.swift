@@ -1,52 +1,28 @@
 import SwiftUI
 
 struct SettingsView: View {
-    @Binding var patchEnabled: Bool
+    @Binding var language: DisplayLanguage
     @Binding var keepAwake: Bool
     @Binding var hapticsEnabled: Bool
-    var client: PatchClient
     var onReloadGame: () -> Void
-    var onRefreshPatch: () async -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var safari: SafariLink?
-    @State private var refreshing = false
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    Toggle("繁體中文補丁", isOn: $patchEnabled)
-                    LabeledContent("版本") {
-                        Text(client.version ?? "尚未取得")
-                    }
-                    if let fetchedAt = client.fetchedAt {
-                        LabeledContent("取得時間") {
-                            Text(fetchedAt.formatted(
-                                Date.FormatStyle(date: .abbreviated, time: .shortened)
-                                    .locale(Locale(identifier: "zh-TW"))
-                            ))
+                    Picker("語言", selection: $language) {
+                        ForEach(DisplayLanguage.allCases) { item in
+                            Text(item.label).tag(item)
                         }
                     }
-                    if let sha = client.sha256 {
-                        LabeledContent("SHA-256") {
-                            Text(String(sha.prefix(12)))
-                                .font(.caption.monospaced())
-                        }
-                        .accessibilityLabel("SHA-256 \(sha)")
-                    }
-                    Button(refreshing ? "取得中…" : "重新取得補丁") {
-                        refreshing = true
-                        Task {
-                            await onRefreshPatch()
-                            refreshing = false
-                        }
-                    }
-                    .disabled(refreshing || !patchEnabled)
+                    .pickerStyle(.segmented)
                 } header: {
-                    Text("翻譯")
+                    Text("語言")
                 } footer: {
-                    Text("補丁作者 Kai5106，授權未標。App 只向 Greasy Fork 官方網址抓取，檢查過格式後注入，不把腳本放進原始碼。關閉後重新載入即恢復原文。")
+                    Text("繁體中文直接做在這個 App 裡，套在原站畫面上。寶可夢名稱依 PokeAPI 繁中，介面譯文來自 Kai5106。切換後會重新載入。選原文就顯示原站自己的文字。帳號和存檔仍在原站。")
                 }
 
                 Section("遊玩") {
@@ -58,15 +34,15 @@ struct SettingsView: View {
                 Section {
                     link("遊戲原站", "https://pokesurvivor.com/")
                     link("原作者 GitHub", "https://github.com/JPTER78/pokesurvivor")
-                    link("繁中補丁", "https://greasyfork.org/zh-TW/scripts/599869")
-                    link("補丁說明", "https://usegametool.blogspot.com/2026/10/pokesurvivor.html")
+                    link("繁中譯文", "https://greasyfork.org/zh-TW/scripts/599869")
+                    link("譯文說明", "https://usegametool.blogspot.com/2026/10/pokesurvivor.html")
                     Button("在 Safari 開啟原站") {
                         safari = SafariLink(url: NavigationPolicy.home)
                     }
                 } header: {
                     Text("來源")
                 } footer: {
-                    Text("使用 Google 登入會在這個 App 裡打開登入視窗，完成後回到遊戲。這份登入存在 App 裡，跟用 Safari 開原站是分開的。")
+                    Text("使用 Google 登入會在這個 App 裡打開登入視窗。Google 完成後，登入狀態會回到遊戲。這份登入存在 App 裡，跟用 Safari 開原站是分開的。")
                 }
 
                 Section("關於") {
@@ -93,7 +69,7 @@ struct SettingsView: View {
             SafariSheet(url: link.url)
                 .ignoresSafeArea()
         }
-        .onChange(of: patchEnabled) { _, _ in Haptics.select() }
+        .onChange(of: language) { _, _ in Haptics.select() }
         .onChange(of: keepAwake) { _, _ in Haptics.select() }
         .onChange(of: hapticsEnabled) { _, _ in Haptics.select() }
     }

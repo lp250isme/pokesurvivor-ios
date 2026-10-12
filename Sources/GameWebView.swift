@@ -16,10 +16,12 @@ struct GameWebView: UIViewRepresentable {
         configuration.mediaTypesRequiringUserActionForPlayback = []
 
         let controller = configuration.userContentController
+        context.coordinator.installAuthBridge(on: controller)
+        controller.add(context.coordinator, name: "psChrome")
         controller.addUserScript(WKUserScript(source: ShellScripts.viewport, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
-        if let patch = session.patchSource {
-            controller.addUserScript(WKUserScript(source: patch, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
-            controller.addUserScript(WKUserScript(source: ShellScripts.statusNote, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
+        controller.addUserScript(WKUserScript(source: ShellScripts.appSettings, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
+        if let script = session.displayScript {
+            controller.addUserScript(WKUserScript(source: script, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
         }
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
@@ -46,11 +48,19 @@ struct GameWebView: UIViewRepresentable {
 
     func updateUIView(_ uiView: WKWebView, context: Context) {}
 
-    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
+    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
         let session: GameSession
         private var progressObservation: NSKeyValueObservation?
         private var signInController: AuthPopupController?
         private var signInWebView: WKWebView?
+        private var bridgedControllers: [ObjectIdentifier] = []
+        private var didHandOff = false
+        private var signInCancelled = false
+        #if DEBUG
+        private var didTapGoogle = false
+        private var didOpenGameSettings = false
+        private var didTapAppSettings = false
+        #endif
 
         init(session: GameSession) {
             self.session = session
@@ -84,6 +94,20 @@ struct GameWebView: UIViewRepresentable {
             MainActor.assumeIsolated {
                 if webView === signInWebView { return }
                 session.noteFinish()
+                #if DEBUG
+                if !didTapGoogle, ProcessInfo.processInfo.arguments.contains("-psTapGoogle") {
+                    didTapGoogle = true
+                    webView.evaluateJavaScript(Self.tapGoogle)
+                }
+                if !didOpenGameSettings, ProcessInfo.processInfo.arguments.contains("-psOpenGameSettings") {
+                    didOpenGameSettings = true
+                    webView.evaluateJavaScript(Self.openGameSettings)
+                }
+                if !didTapAppSettings, ProcessInfo.processInfo.arguments.contains("-psTapAppSettings") {
+                    didTapAppSettings = true
+                    webView.evaluateJavaScript(Self.tapAppSettings)
+                }
+                #endif
             }
         }
 
@@ -105,6 +129,10 @@ struct GameWebView: UIViewRepresentable {
         func webViewDidClose(_ webView: WKWebView) {
             MainActor.assumeIsolated {
                 guard webView === signInWebView else { return }
+                if !didHandOff && !signInCancelled {
+                    signInCancelled = true
+                    session.webView?.evaluateJavaScript("window.__psCancelGoogle && window.__psCancelGoogle()")
+                }
                 finishSignIn()
             }
         }
@@ -125,6 +153,9 @@ struct GameWebView: UIViewRepresentable {
                         decisionHandler(.allow)
                     } else {
                         decisionHandler(.cancel)
+                        if !subframe {
+                            NSLog("psAuth blocked sign-in window from opening %@", url.host ?? "")
+                        }
                     }
                     return
                 }
@@ -154,6 +185,7 @@ struct GameWebView: UIViewRepresentable {
                     return nil
                 }
                 if NavigationPolicy.isSignIn(url) {
+                    if signInWebView != nil { return nil }
                     return beginSignIn(configuration: configuration)
                 }
                 if NavigationPolicy.allows(url) {
@@ -165,8 +197,80 @@ struct GameWebView: UIViewRepresentable {
             }
         }
 
+        func installAuthBridge(on controller: WKUserContentController) {
+            let id = ObjectIdentifier(controller)
+            guard !bridgedControllers.contains(id) else { return }
+            bridgedControllers.append(id)
+            controller.addUserScript(WKUserScript(
+                source: ShellScripts.authBridge,
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: false
+            ))
+            controller.add(self, name: "psAuth")
+        }
+
+        func userContentController(
+            _ userContentController: WKUserContentController,
+            didReceive message: WKScriptMessage
+        ) {
+            MainActor.assumeIsolated {
+                if message.name == "psChrome" {
+                    if (message.body as? String) == "settings" {
+                        session.onAppSettings()
+                    }
+                    return
+                }
+                guard message.name == "psAuth" else { return }
+                guard let body = message.body as? [String: Any] else {
+                    NSLog("psAuth unexpected message")
+                    return
+                }
+                if body["ready"] as? Bool == true {
+                    let hasCode = (body["hasCode"] as? Bool) == true
+                    let storage = body["storage"] as? Int ?? (body["storage"] as? NSNumber)?.intValue ?? -1
+                    NSLog(
+                        "psAuth handler hook code=%d storage=%d",
+                        hasCode ? 1 : 0,
+                        storage
+                    )
+                    return
+                }
+                if let jserror = body["jserror"] as? String {
+                    NSLog("psAuth js %@", jserror)
+                    return
+                }
+                if body["missing"] as? Bool == true {
+                    NSLog("psAuth token response had no Google credential")
+                    return
+                }
+                if body["signedIn"] as? Bool == true {
+                    NSLog("psAuth game signed in")
+                    return
+                }
+                if body["close"] as? Bool == true {
+                    if !didHandOff && !signInCancelled {
+                        signInCancelled = true
+                        session.webView?.evaluateJavaScript("window.__psCancelGoogle && window.__psCancelGoogle()")
+                    }
+                    finishSignIn()
+                    return
+                }
+                guard !signInCancelled, !didHandOff else { return }
+                guard message.webView === signInWebView, let page = message.frameInfo.request.url, NavigationPolicy.isAuthHandler(page) else { return }
+                let idToken = body["id"] as? String ?? ""
+                let accessToken = body["access"] as? String ?? ""
+                guard !idToken.isEmpty || !accessToken.isEmpty else { return }
+                didHandOff = true
+                NSLog("psAuth handed Google credential to the game")
+                completeGoogleSignIn(idToken: idToken, accessToken: accessToken)
+            }
+        }
+
         @MainActor
         private func beginSignIn(configuration: WKWebViewConfiguration) -> WKWebView {
+            didHandOff = false
+            signInCancelled = false
+            installAuthBridge(on: configuration.userContentController)
             let popup = WKWebView(frame: session.webView?.bounds ?? CGRect(x: 0, y: 0, width: 844, height: 390), configuration: configuration)
             popup.customUserAgent = BrowserIdentity.mobileSafari
             popup.navigationDelegate = self
@@ -214,8 +318,21 @@ struct GameWebView: UIViewRepresentable {
         }
 
         @MainActor
+        private func completeGoogleSignIn(idToken: String, accessToken: String) {
+            let payload: [String: String] = ["id": idToken, "access": accessToken]
+            guard let data = try? JSONSerialization.data(withJSONObject: payload),
+                  let json = String(data: data, encoding: .utf8) else { return }
+            session.webView?.evaluateJavaScript("window.__psCompleteGoogle && window.__psCompleteGoogle(\(json))")
+            finishSignIn()
+        }
+
+        @MainActor
         private func cancelSignIn() {
             Haptics.tap()
+            signInCancelled = true
+            if !didHandOff {
+                session.webView?.evaluateJavaScript("window.__psCancelGoogle && window.__psCancelGoogle()")
+            }
             signInWebView?.evaluateJavaScript("window.close()")
             finishSignIn()
         }
@@ -231,6 +348,57 @@ struct GameWebView: UIViewRepresentable {
                 }
             }
         }
+
+        #if DEBUG
+        private static let openGameSettings = """
+        (() => {
+          let n = 0;
+          const tick = () => {
+            document.querySelectorAll("canvas").forEach((c) => { c.style.visibility = "hidden"; });
+            const start = document.getElementById("tap-start");
+            if (start) start.classList.add("hidden");
+            const scr = document.getElementById("scr-settings");
+            if (scr) scr.classList.remove("hidden");
+            if (document.getElementById("ps-app-settings") || ++n > 30) return;
+            setTimeout(tick, 200);
+          };
+          tick();
+        })();
+        """
+
+        private static let tapAppSettings = """
+        (() => {
+          let n = 0;
+          const tick = () => {
+            document.querySelectorAll("canvas").forEach((c) => { c.style.visibility = "hidden"; });
+            const scr = document.getElementById("scr-settings");
+            if (scr) scr.classList.remove("hidden");
+            const btn = document.getElementById("ps-app-settings");
+            if (btn) { btn.click(); return; }
+            if (++n < 30) setTimeout(tick, 200);
+          };
+          tick();
+        })();
+        """
+
+        private static let tapGoogle = """
+        (() => {
+          let n = 0;
+          const tick = () => {
+            const start = document.getElementById("tap-start");
+            if (start && !start.classList.contains("hidden")) start.click();
+            const btn = document.getElementById("btn-google");
+            if (btn && btn.offsetParent) {
+              btn.scrollIntoView({ block: "center" });
+              btn.click();
+              return;
+            }
+            if (++n < 40) setTimeout(tick, 250);
+          };
+          tick();
+        })();
+        """
+        #endif
 
         private static func message(_ error: Error) -> String {
             let code = (error as NSError).code

@@ -1,8 +1,12 @@
-App icon files are the PokéSurvivor home-screen icons published at
-https://pokesurvivor.com/assets/icons/icon-512.png
-scaled with nearest-neighbor to 120px and 180px.
+App icon files keep the Poké Ball from the PokéSurvivor home-screen icon
+published at https://pokesurvivor.com/assets/icons/icon-512.png.
+
+The gold frame and corner marks are removed. They sat on the edge, and the
+iOS icon mask cut them off. The ball stays on the icon's original navy field,
+scaled with nearest-neighbor to 120px and 180px. GameIcon.png is the ball
+alone, on a transparent background, for the in-app splash.
 
 They are not part of the MIT code license. Pokémon and the Poké Ball design
 are trademarks of Nintendo, Creatures Inc., GAME FREAK inc. and The Pokémon Company.
-This unofficial client uses the original icon so the home screen matches the game.
-Non-commercial. Remove on request from the rights holder.
+This unofficial client uses the ball from the original icon so the home screen
+matches the game. Non-commercial. Remove on request from the rights holder.

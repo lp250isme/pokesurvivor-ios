@@ -30,8 +30,16 @@ final class NavigationPolicyTests: XCTestCase {
     func testSignInWindowAllowsAccountChooserHosts() {
         XCTAssertTrue(NavigationPolicy.allowsSignInNavigation(URL(string: "https://accounts.youtube.com/accounts/SetSID")!))
         XCTAssertTrue(NavigationPolicy.allowsSignInNavigation(URL(string: "https://pokesurvivor-jpter.firebaseapp.com/__/auth/handler")!))
+        XCTAssertFalse(NavigationPolicy.allowsSignInNavigation(URL(string: "https://pokesurvivor.com/")!))
+        XCTAssertFalse(NavigationPolicy.allowsSignInNavigation(URL(string: "https://www.pokesurvivor.com/play")!))
         XCTAssertFalse(NavigationPolicy.allowsSignInNavigation(URL(string: "https://evil.com/")!))
         XCTAssertFalse(NavigationPolicy.allowsSignInNavigation(URL(string: "https://youtube.com.evil.com/")!))
+    }
+
+    func testAuthHandlerIsOnlyTheFirebaseHelper() {
+        XCTAssertTrue(NavigationPolicy.isAuthHandler(URL(string: "https://pokesurvivor-jpter.firebaseapp.com/__/auth/handler?apiKey=1")!))
+        XCTAssertFalse(NavigationPolicy.isAuthHandler(URL(string: "https://accounts.google.com/o/oauth2/v2/auth")!))
+        XCTAssertFalse(NavigationPolicy.isAuthHandler(URL(string: "https://pokesurvivor.com/")!))
     }
 
     func testSignInUserAgentLooksLikeMobileSafari() {
