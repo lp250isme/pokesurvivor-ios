@@ -1,6 +1,150 @@
 import SwiftUI
 import WebKit
 
+/// Publishes the device safe area into the page. CSS `env()` is the fallback until this runs.
+/// On iPhone Duo an active fold replaces those insets with the larger side of the hinge.
+/// The canvas stays full-bleed either way.
+final class GameWKWebView: WKWebView {
+    private var published: String?
+    private var foldTimer: Timer?
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        publishSafeArea()
+        if window == nil {
+            foldTimer?.invalidate()
+            foldTimer = nil
+        } else {
+            watchFoldIfNeeded()
+        }
+    }
+
+    override func safeAreaInsetsDidChange() {
+        super.safeAreaInsetsDidChange()
+        publishSafeArea()
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        publishSafeArea()
+    }
+
+    func publishSafeArea(force: Bool = false) {
+        let insets = FoldLayout.insets(bounds: bounds, safe: measuredInsets(), division: FoldLayout.division(in: self))
+        let payload = [insets.top, insets.right, insets.bottom, insets.left]
+            .map(Self.px)
+            .joined(separator: ",")
+        if !force, payload == published { return }
+        published = payload
+        evaluateJavaScript("window.__psSetSafe&&window.__psSetSafe(\(payload))", completionHandler: nil)
+    }
+
+    /// Folding Duo does not change the window size, and this SDK has no hinge callback.
+    /// The lookup is absent on iOS 17–26, so the timer never starts there.
+    private func watchFoldIfNeeded() {
+        guard foldTimer == nil, FoldLayout.systemCanReportDivision else { return }
+        let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
+            self?.publishSafeArea()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        foldTimer = timer
+    }
+
+    private func measuredInsets() -> UIEdgeInsets {
+        let own = safeAreaInsets
+        if own.top + own.right + own.bottom + own.left > 0.5 { return own }
+        guard let window else { return own }
+        let frame = convert(bounds, to: window)
+        let coversWindow = abs(frame.minX) < 1 && abs(frame.minY) < 1
+            && abs(frame.width - window.bounds.width) < 1
+            && abs(frame.height - window.bounds.height) < 1
+        return coversWindow ? window.safeAreaInsets : own
+    }
+
+    private static func px(_ value: CGFloat) -> String {
+        String(format: "%.3f", locale: Locale(identifier: "en_US_POSIX"), Double(value))
+    }
+}
+
+/// Picks the larger region that does not cross an active fold.
+/// `division` is in `bounds` coordinates and already includes the system's margins.
+/// A missing, empty, or offscreen band leaves the edge insets unchanged.
+enum FoldLayout {
+    /// UIKit names from the iOS 27.1 SDK. Looked up so an iOS 26 toolchain still builds.
+    static let kindClassName = "UIViewReservedRegionKind"
+    static let divisionKindSelector = "divisionRegionKind"
+    static let regionsSelector = "reservedRegionsOfKind:options:"
+
+    static var systemCanReportDivision: Bool {
+        guard let kindClass = NSClassFromString(kindClassName) as? NSObject.Type else { return false }
+        return kindClass.responds(to: NSSelectorFromString(divisionKindSelector))
+    }
+
+    static func insets(bounds: CGRect, safe: UIEdgeInsets, division: CGRect?) -> UIEdgeInsets {
+        guard let division else { return safe }
+        guard bounds.width > 1, bounds.height > 1 else { return safe }
+        let safeRect = bounds.inset(by: safe)
+        guard safeRect.width > 1, safeRect.height > 1, !safeRect.isNull, !safeRect.isInfinite else { return safe }
+        let band = division.intersection(safeRect)
+        guard !band.isNull, !band.isInfinite else { return safe }
+
+        if band.height > band.width {
+            guard band.width >= 1, band.height >= safeRect.height * 0.8 else { return safe }
+            let leftWidth = band.minX - safeRect.minX
+            let rightWidth = safeRect.maxX - band.maxX
+            guard max(leftWidth, rightWidth) >= 64 else { return safe }
+            let useLeft = leftWidth >= rightWidth
+            let minX = useLeft ? safeRect.minX : band.maxX
+            let maxX = useLeft ? band.minX : safeRect.maxX
+            return UIEdgeInsets(
+                top: safeRect.minY - bounds.minY,
+                left: minX - bounds.minX,
+                bottom: bounds.maxY - safeRect.maxY,
+                right: bounds.maxX - maxX
+            )
+        }
+
+        guard band.height >= 1, band.width >= safeRect.width * 0.8 else { return safe }
+        let topHeight = band.minY - safeRect.minY
+        let bottomHeight = safeRect.maxY - band.maxY
+        guard max(topHeight, bottomHeight) >= 64 else { return safe }
+        let useTop = topHeight >= bottomHeight
+        let minY = useTop ? safeRect.minY : band.maxY
+        let maxY = useTop ? band.minY : safeRect.maxY
+        return UIEdgeInsets(
+            top: minY - bounds.minY,
+            left: safeRect.minX - bounds.minX,
+            bottom: bounds.maxY - maxY,
+            right: bounds.maxX - safeRect.maxX
+        )
+    }
+
+    /// Active division only. Passing no query options asks UIKit for active regions,
+    /// so a flat Duo (inactive fold) contributes nothing and does not pad the layout.
+    static func division(in view: UIView) -> CGRect? {
+        guard let kindClass = NSClassFromString(kindClassName) as? NSObject.Type else { return nil }
+        let kindSelector = NSSelectorFromString(divisionKindSelector)
+        guard kindClass.responds(to: kindSelector) else { return nil }
+        guard let kind = kindClass.perform(kindSelector)?.takeUnretainedValue() else { return nil }
+        let selector = NSSelectorFromString(regionsSelector)
+        guard view.responds(to: selector) else { return nil }
+        guard let returned = view.perform(selector, with: kind, with: nil)?.takeUnretainedValue() else { return nil }
+        let items = (returned as? [AnyObject]) ?? (returned as? NSArray)?.compactMap { $0 as? AnyObject } ?? []
+        let frameSelector = NSSelectorFromString("frame")
+        var best: CGRect?
+        var bestArea: CGFloat = 0
+        for item in items {
+            guard item.responds(to: frameSelector), let value = item.value(forKey: "frame") as? NSValue else { continue }
+            let frame = value.cgRectValue
+            let area = frame.width * frame.height
+            guard area > bestArea else { continue }
+            bestArea = area
+            best = frame
+        }
+        return best
+    }
+}
+
 struct GameWebView: UIViewRepresentable {
     var session: GameSession
 
@@ -19,12 +163,13 @@ struct GameWebView: UIViewRepresentable {
         context.coordinator.installAuthBridge(on: controller)
         controller.add(context.coordinator, name: "psChrome")
         controller.addUserScript(WKUserScript(source: ShellScripts.viewport, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
+        controller.addUserScript(WKUserScript(source: ShellScripts.safeArea, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
         controller.addUserScript(WKUserScript(source: ShellScripts.appSettings, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
         if let script = session.displayScript {
             controller.addUserScript(WKUserScript(source: script, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
         }
 
-        let webView = WKWebView(frame: .zero, configuration: configuration)
+        let webView = GameWKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
         webView.uiDelegate = context.coordinator
         webView.isOpaque = false
@@ -60,6 +205,7 @@ struct GameWebView: UIViewRepresentable {
         private var didTapGoogle = false
         private var didOpenGameSettings = false
         private var didTapAppSettings = false
+        private var didOpenScreen = false
         #endif
 
         init(session: GameSession) {
@@ -94,6 +240,7 @@ struct GameWebView: UIViewRepresentable {
             MainActor.assumeIsolated {
                 if webView === signInWebView { return }
                 session.noteFinish()
+                (webView as? GameWKWebView)?.publishSafeArea(force: true)
                 #if DEBUG
                 if !didTapGoogle, ProcessInfo.processInfo.arguments.contains("-psTapGoogle") {
                     didTapGoogle = true
@@ -106,6 +253,10 @@ struct GameWebView: UIViewRepresentable {
                 if !didTapAppSettings, ProcessInfo.processInfo.arguments.contains("-psTapAppSettings") {
                     didTapAppSettings = true
                     webView.evaluateJavaScript(Self.tapAppSettings)
+                }
+                if !didOpenScreen, let name = Self.requestedScreen() {
+                    didOpenScreen = true
+                    webView.evaluateJavaScript(Self.openScreen(name))
                 }
                 #endif
             }
@@ -380,6 +531,58 @@ struct GameWebView: UIViewRepresentable {
           tick();
         })();
         """
+
+        private static func requestedScreen() -> String? {
+            let args = ProcessInfo.processInfo.arguments
+            guard let index = args.firstIndex(of: "-psOpenScr"), index + 1 < args.count else { return nil }
+            let name = args[index + 1]
+            let allowed = [
+                "scr-menu", "scr-dex", "scr-upgrades", "scr-gacha", "scr-friends", "scr-lobby",
+                "scr-rank", "scr-goals", "scr-pause", "scr-levelup", "scr-nick", "scr-over",
+                "scr-item", "scr-bond", "scr-starters", "scr-settings", "scr-news", "scr-support",
+                "scr-profile", "scr-legal", "scr-login", "scr-test", "scr-result", "play",
+            ]
+            return allowed.contains(name) ? name : nil
+        }
+
+        private static func openScreen(_ name: String) -> String {
+            """
+            (() => {
+              const name = "\(name)";
+              let n = 0;
+              let held = 0;
+              let opened = false;
+              const open = document.getElementById.bind(document);
+              const visible = (id) => {
+                const el = open(id);
+                return !!(el && !el.classList.contains("hidden"));
+              };
+              const tick = () => {
+                const start = open("tap-start");
+                if (start && !start.classList.contains("hidden")) start.click();
+                const ready = window.G && G.UI && (visible("scr-menu") || visible("scr-login") || visible("scr-nick"));
+                if (!ready) {
+                  if (++n < 50) setTimeout(tick, 250);
+                  return;
+                }
+                if (!opened) {
+                  const go = name === "play" ? "play" : name.replace(/^scr-/, "");
+                  const btn = document.querySelector('[data-go="' + go + '"]');
+                  if (btn) btn.click();
+                  else if (name !== "scr-menu") G.UI.show(name);
+                  opened = true;
+                }
+                const bar = ["scr-menu", "scr-dex", "scr-upgrades", "scr-gacha", "scr-friends", "scr-lobby", "scr-rank", "scr-goals", "scr-news", "scr-profile"];
+                if (bar.indexOf(name) >= 0 && G.UI.chrome) G.UI.chrome(true);
+                if (name === "play") return;
+                if (!visible(name) && name !== "scr-menu") G.UI.show(name);
+                if (visible(name) && ++held >= 2) return;
+                if (++n < 50) setTimeout(tick, 200);
+              };
+              tick();
+            })();
+            """
+        }
 
         private static let tapGoogle = """
         (() => {

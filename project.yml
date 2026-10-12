@@ -7,8 +7,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "6.0"
-    MARKETING_VERSION: "1.0.4"
-    CURRENT_PROJECT_VERSION: "5"
+    MARKETING_VERSION: "1.0.5"
+    CURRENT_PROJECT_VERSION: "6"
 targets:
   PokeSurvivor:
     type: application
@@ -46,8 +46,13 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
         SWIFT_VERSION: "6.0"
         ENABLE_TESTABILITY: YES
-        MARKETING_VERSION: "1.0.4"
-        CURRENT_PROJECT_VERSION: "5"
+        MARKETING_VERSION: "1.0.5"
+        CURRENT_PROJECT_VERSION: "6"
+    postBuildScripts:
+      - name: Stamp iPhone Duo full screen
+        basedOnDependencyAnalysis: false
+        script: |
+          bash "${SRCROOT}/scripts/stamp-duo-sdk.sh"
   PokeSurvivorTests:
     type: bundle.unit-test
     platform: iOS

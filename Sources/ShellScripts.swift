@@ -351,4 +351,92 @@ enum ShellScripts {
       new MutationObserver(place).observe(document.documentElement, { childList: true, subtree: true });
     })();
     """#
+
+    /// Insets the site's fixed pages away from the notch, Dynamic Island, and home indicator.
+    /// The values come from `env(safe-area-inset-*)`, then the app overwrites them with the
+    /// web view's real insets so every device and rotation uses the same rules.
+    /// The playfield canvas stays full-bleed: combat touch events use viewport `clientX`,
+    /// so the canvas itself is not moved. The canvas HUD is shifted by those same insets,
+    /// and its hit targets move with it.
+    static let safeArea = #"""
+    (() => {
+      if (window.__psSafeArea) return;
+      window.__psSafeArea = true;
+      const host = (location.hostname || "").toLowerCase();
+      if (host !== "pokesurvivor.com" && host !== "www.pokesurvivor.com") return;
+
+      window.__psSetSafe = (top, right, bottom, left) => {
+        window.__psSafe = { t: top, r: right, b: bottom, l: left };
+        const root = document.documentElement;
+        root.style.setProperty("--ps-safe-top", top + "px");
+        root.style.setProperty("--ps-safe-right", right + "px");
+        root.style.setProperty("--ps-safe-bottom", bottom + "px");
+        root.style.setProperty("--ps-safe-left", left + "px");
+      };
+
+      const style = document.createElement("style");
+      style.id = "ps-safe-style";
+      style.textContent = [
+        ":root{",
+        "--ps-safe-top:env(safe-area-inset-top,0px);",
+        "--ps-safe-right:env(safe-area-inset-right,0px);",
+        "--ps-safe-bottom:env(safe-area-inset-bottom,0px);",
+        "--ps-safe-left:env(safe-area-inset-left,0px)",
+        "}",
+        ".scr,#pull-fx,.tapstart,.boot{",
+        "top:var(--ps-safe-top)!important;",
+        "right:var(--ps-safe-right)!important;",
+        "bottom:var(--ps-safe-bottom)!important;",
+        "left:var(--ps-safe-left)!important",
+        "}",
+        ".scr>.box,.box.settings,.box.news-box,.profile-box{max-height:100%!important}",
+        ".topbar{margin-top:var(--ps-safe-top)!important;margin-right:var(--ps-safe-right)!important;align-items:center!important}",
+        ".topbar .pill,.topbar .btn{height:30px!important;min-height:0!important;box-sizing:border-box!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;line-height:1!important;box-shadow:none!important;white-space:nowrap!important}",
+        ".topbar .btn{padding:0 8px!important}",
+        ".topbar .pill{padding:0 10px!important}",
+        ".topbar .btn img,.topbar .coin{height:18px!important;width:auto!important}",
+        "#btn-sound,#btn-full,#btn-settings,#btn-support{width:30px!important;padding:0!important}",
+        ".credits-line{margin-left:var(--ps-safe-left)!important;margin-bottom:var(--ps-safe-bottom)!important}",
+        ".sound-panel{margin-top:var(--ps-safe-top)!important;margin-right:var(--ps-safe-right)!important}",
+        ".toast{margin-bottom:var(--ps-safe-bottom)!important}",
+        ".ach-pop{margin-top:var(--ps-safe-top)!important;margin-bottom:var(--ps-safe-bottom)!important}",
+        ".invite-pop{margin-right:var(--ps-safe-right)!important;margin-bottom:var(--ps-safe-bottom)!important}"
+      ].join("");
+      (document.head || document.documentElement).appendChild(style);
+
+      const installHud = () => {
+        const hud = window.G && G.HUD;
+        const touch = window.G && G.Touch;
+        if (!hud || !touch || typeof hud.draw !== "function" || typeof touch.addButton !== "function") return false;
+        if (hud.draw.__psSafe) return true;
+        const orig = hud.draw;
+        const wrapped = function (ctx, width, height, player, data) {
+          const safe = window.__psSafe || { t: 0, r: 0, b: 0, l: 0 };
+          const l = safe.l || 0, t = safe.t || 0, r = safe.r || 0, b = safe.b || 0;
+          if (l + t + r + b < 0.5) return orig.call(this, ctx, width, height, player, data);
+          const add = touch.addButton;
+          touch.addButton = function (x, y, w, h, fn, pad) {
+            return add.call(this, x + l, y + t, w, h, fn, pad);
+          };
+          ctx.save();
+          ctx.translate(l, t);
+          try {
+            return orig.call(this, ctx, Math.max(1, width - l - r), Math.max(1, height - t - b), player, data);
+          } finally {
+            touch.addButton = add;
+            ctx.restore();
+          }
+        };
+        wrapped.__psSafe = true;
+        hud.draw = wrapped;
+        return true;
+      };
+      if (!installHud()) {
+        const timer = setInterval(() => {
+          if (installHud()) clearInterval(timer);
+        }, 50);
+        setTimeout(() => clearInterval(timer), 20000);
+      }
+    })();
+    """#
 }
