@@ -66,7 +66,7 @@ struct SettingsView: View {
                 } header: {
                     Text("來源")
                 } footer: {
-                    Text("Google 登入在 App 內可能被 Google 拒絕。帳號密碼與訪客可以玩。需要 Google 帳號時，用 Safari 開啟原站。")
+                    Text("使用 Google 登入會在這個 App 裡打開登入視窗，完成後回到遊戲。這份登入存在 App 裡，跟用 Safari 開原站是分開的。")
                 }
 
                 Section("關於") {

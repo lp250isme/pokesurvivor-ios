@@ -21,7 +21,7 @@ The GitHub Release IPA is unsigned. Sign it with your own Apple ID:
 
 A free Apple ID signature expires in about 7 days. Refresh it with the same tool. iOS 17 or later. iPhone and iPad. The game plays in landscape.
 
-Google sign-in may be blocked inside the app. Email and guest play work. Settings has "在 Safari 開啟原站" when a Google account is required.
+Google sign-in opens in a window inside the app. The first time, choose the Google account there. Email, password, and guest play also work. Signing in through Safari does not sign the app in.
 
 ### Build
 
@@ -63,7 +63,7 @@ GitHub Release 的 IPA 沒有簽章，要用你自己的 Apple ID 簽：
 
 免費 Apple ID 的簽章大約 7 天，用同一個工具重新整理。需要 iOS 17 以上，iPhone 與 iPad 都可以。遊戲是橫向。
 
-App 裡的「使用 Google 登入」可能被 Google 拒絕。帳號密碼和訪客可以玩。一定要用 Google 時，設定裡有「在 Safari 開啟原站」。
+「使用 Google 登入」會在 App 裡打開登入視窗，第一次要在那裡選 Google 帳號。帳號密碼和訪客也可以玩。用 Safari 開原站不會讓 App 跟著登入。
 
 ### 建置
 

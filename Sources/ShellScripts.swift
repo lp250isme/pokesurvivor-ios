@@ -1,27 +1,6 @@
 import Foundation
 
 enum ShellScripts {
-    /// Google blocks OAuth popups inside WKWebView. Auth hosts stay in this view.
-    static let windowOpen = """
-    (() => {
-      const nativeOpen = window.open.bind(window);
-      const auth = /(^|\\.)google\\.com$|(^|\\.)googleapis\\.com$|(^|\\.)gstatic\\.com$|(^|\\.)firebaseapp\\.com$|(^|\\.)googleusercontent\\.com$/;
-      window.open = function (url, target, features) {
-        try {
-          if (url == null || url === "" || url === "about:blank") {
-            return nativeOpen(url, target, features);
-          }
-          const resolved = new URL(String(url), location.href);
-          if (resolved.protocol === "https:" && auth.test(resolved.hostname)) {
-            location.assign(resolved.href);
-            return window;
-          }
-        } catch (_) {}
-        return nativeOpen(url, target, features);
-      };
-    })();
-    """
-
     static let viewport = """
     (() => {
       const content = "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover";
