@@ -1,0 +1,8 @@
+App icon files are the PokéSurvivor home-screen icons published at
+https://pokesurvivor.com/assets/icons/icon-512.png
+scaled with nearest-neighbor to 120px and 180px.
+
+They are not part of the MIT code license. Pokémon and the Poké Ball design
+are trademarks of Nintendo, Creatures Inc., GAME FREAK inc. and The Pokémon Company.
+This unofficial client uses the original icon so the home screen matches the game.
+Non-commercial. Remove on request from the rights holder.
